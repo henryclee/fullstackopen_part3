@@ -1,11 +1,10 @@
 require ('dotenv').config
 const express = require('express')
 const app = express()
-//const cors = require('cors')
+const cors = require('cors')
 const Person = require('./models/person')
-const person = require('./models/person')
 
-//app.use(cors())
+app.use(cors())
 app.use(express.json())
 app.use(express.static('build'))
 
@@ -32,23 +31,24 @@ app.get('/info', (request, response) => {
 })
 
 app.post('/api/persons', (request, response, next) => {
+
     const body = request.body
 
-
-    if (!body.name || !body.number) {
-        return response.status(400).json({
-            error: 'missing information'
+    Person
+        .find({name: body.name})
+        .then(personList => {
+            if ((personList.length) !== 0) {
+                response.status(400).send({error: 'name already present'})
+            }
+            else {
+                Person
+                    .create({name: body.name, number: body.number})
+                    .then(newPerson => {
+                        response.json(newPerson)
+                    })
+                    .catch(error => next(error))
+            }
         })
-    }
-
-    const newPerson = new Person ({
-        name: body.name,
-        number: body.number || ""
-    })
-
-    newPerson.save().then(savedPerson => {
-        response.json(savedPerson)
-    })
 
 })
 
@@ -62,12 +62,13 @@ app.delete('/api/persons/:id', (request, response,next) =>{
 })
 
 app.put('/api/persons/:id', (request, response, next) => {
-    const body = request.body
-    const update = {
-        name: body.name,
-        number: body.number
-    }
-    Person.findByIdAndUpdate(request.params.id, update, {new: true})
+    const {name, number} = request.body
+    
+    Person.findByIdAndUpdate(
+        request.params.id, 
+        {name, number}, 
+        {new: true, runValidators: true, context: 'query'}
+    )
         .then(updatedPerson => {
             response.json(updatedPerson)
         })
@@ -84,9 +85,12 @@ app.use(unknownEndpoint)
 
 const errorHandler = (error, request, response, next) => {
     console.error(error.message)
+    console.error(error.name)
 
-    if (error.name = 'CastError') {
+    if (error.name === 'CastError') {
         return response.status(400).send({error: 'malformed id'})
+    } else if (error.name === 'ValidationError') {
+        return response.status(400).json({error: error.message})
     }
     next(error)
 }
